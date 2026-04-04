@@ -1,13 +1,155 @@
-// This is your Prisma schema file,
-// learn more about it in the docs: https://pris.ly/d/prisma-schema
-
-// Get a free hosted Postgres database in seconds: `npx create-db`
+// Brick Management System - Prisma Schema
+// Learn more: https://pris.ly/d/prisma-schema
 
 generator client {
-  provider = "prisma-client"
-  output   = "../app/generated/prisma"
+  provider = "prisma-client-js"
 }
 
 datasource db {
   provider = "postgresql"
+}
+
+// ============================================================
+// INVENTORY - Quản lý hàng hóa
+// ============================================================
+
+model Item {
+  id              Int               @id @default(autoincrement())
+  name            String
+  baseUnit        String            // m3, tấn, viên...
+  allowCustomUnit Boolean           @default(true)
+  createdAt       DateTime          @default(now())
+  updatedAt       DateTime          @updatedAt
+  unitConversions UnitConversion[]
+  importTxns      ImportTransaction[]
+
+  @@map("items")
+}
+
+model UnitConversion {
+  id               Int      @id @default(autoincrement())
+  itemId           Int
+  item             Item     @relation(fields: [itemId], references: [id], onDelete: Cascade)
+  unitName         String   // xe, bồn, lượt...
+  conversionRate   Decimal  @db.Decimal(15, 4) // 1 xe = 26 m3
+  minValue         Decimal? @db.Decimal(15, 4) // min cho khoảng (bồn = 40 tấn)
+  maxValue         Decimal? @db.Decimal(15, 4) // max cho khoảng (bồn = 50 tấn)
+  pricePerBaseUnit Decimal  @db.Decimal(15, 2) // giá theo đơn vị cơ bản
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  @@map("unit_conversions")
+}
+
+model ImportTransaction {
+  id                Int      @id @default(autoincrement())
+  itemId            Int
+  item              Item     @relation(fields: [itemId], references: [id])
+  quantity          Decimal  @db.Decimal(15, 4) // số lượng theo đơn vị tuỳ chọn
+  unitUsed          String   // xe, bồn, m3...
+  convertedQuantity Decimal  @db.Decimal(15, 4) // quy đổi về base_unit
+  price             Decimal  @db.Decimal(15, 2) // giá theo base unit
+  totalAmount       Decimal  @db.Decimal(15, 2) // tổng tiền
+  date              DateTime @db.Date
+  note              String?
+  createdAt         DateTime @default(now())
+
+  @@map("import_transactions")
+}
+
+// ============================================================
+// LABOR - Quản lý công thợ
+// ============================================================
+
+model Worker {
+  id          Int                @id @default(autoincrement())
+  name        String
+  type        WorkerType
+  phone       String?
+  createdAt   DateTime           @default(now())
+  attendances WorkerAttendance[]
+  pieceLogs   WorkerPieceLog[]
+
+  @@map("workers")
+}
+
+enum WorkerType {
+  DAILY // Công nhật
+  PIECE // Công bốc - tính theo sản phẩm
+}
+
+model WorkerAttendance {
+  id          Int      @id @default(autoincrement())
+  workerId    Int
+  worker      Worker   @relation(fields: [workerId], references: [id])
+  date        DateTime @db.Date
+  workingDay  Decimal  @db.Decimal(4, 2) // 0.5, 1, 1.5...
+  dailyRate   Decimal  @db.Decimal(15, 2)
+  totalSalary Decimal  @db.Decimal(15, 2)
+  note        String?
+  createdAt   DateTime @default(now())
+
+  @@unique([workerId, date])
+  @@map("worker_attendance")
+}
+
+model WorkerPieceLog {
+  id           Int      @id @default(autoincrement())
+  workerId     Int
+  worker       Worker   @relation(fields: [workerId], references: [id])
+  unit         String   // viên, m3...
+  quantity     Decimal  @db.Decimal(15, 4)
+  pricePerUnit Decimal  @db.Decimal(15, 2)
+  totalSalary  Decimal  @db.Decimal(15, 2)
+  date         DateTime @db.Date
+  note         String?
+  createdAt    DateTime @default(now())
+
+  @@map("worker_piece_logs")
+}
+
+// ============================================================
+// SALES - Bán hàng
+// ============================================================
+
+model Customer {
+  id        Int          @id @default(autoincrement())
+  name      String       @unique
+  phone     String?
+  address   String?
+  createdAt DateTime     @default(now())
+  updatedAt DateTime     @updatedAt
+  orders    SalesOrder[]
+
+  @@map("customers")
+}
+
+model SalesOrder {
+  id            Int       @id @default(autoincrement())
+  customerId    Int?
+  customer      Customer? @relation(fields: [customerId], references: [id])
+  customerName  String?
+  totalQuantity Decimal   @db.Decimal(15, 4) // số viên
+  pricePerUnit  Decimal   @db.Decimal(15, 2)
+  totalAmount   Decimal   @db.Decimal(15, 2)
+  date          DateTime  @db.Date
+  allowDebt     Boolean   @default(false)
+  note          String?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  payments      Payment[]
+
+  @@map("sales_orders")
+}
+
+model Payment {
+  id          Int        @id @default(autoincrement())
+  orderId     Int
+  order       SalesOrder @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  paidAmount  Decimal    @db.Decimal(15, 2)
+  paymentDate DateTime   @db.Date
+  note        String?
+  createdAt   DateTime   @default(now())
+
+  @@map("payments")
 }
